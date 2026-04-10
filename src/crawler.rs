@@ -72,8 +72,9 @@ pub async fn crawl_loop(state: Arc<Mutex<CrawlerState>>) {
                     // until the earliest domain becomes available
                     drop(s);
                     let min_wait = last_fetch_times
-                        .values()
-                        .map(|&t| Duration::from_secs(1).saturating_sub(now.duration_since(t)))
+                        .iter()
+                        .filter(|(d, _)| blocked_domains.contains(d.as_str()))
+                        .map(|(_, &t)| Duration::from_secs(1).saturating_sub(now.duration_since(t)))
                         .min()
                         .unwrap_or(Duration::from_millis(100));
                     tokio::time::sleep(min_wait).await;

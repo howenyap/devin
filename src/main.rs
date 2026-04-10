@@ -2,6 +2,7 @@ mod crawler;
 mod fetcher;
 mod frontier;
 mod parser;
+mod robots;
 mod storage;
 
 use std::path::PathBuf;

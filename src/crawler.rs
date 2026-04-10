@@ -1,11 +1,14 @@
+use std::collections::{HashMap, HashSet};
 use std::path::Path;
 use std::sync::Arc;
+use std::time::Duration;
 
 use tokio::sync::Mutex;
 use tracing::{info, warn};
 
 use crate::fetcher::Fetcher;
 use crate::parser;
+use crate::robots::RobotsChecker;
 use crate::storage::{CrawlRecord, Storage};
 
 /// Shared crawler state, protected by a mutex for concurrent access.
@@ -32,12 +35,19 @@ impl CrawlerState {
 /// Run the crawl loop: pop URLs from the frontier, fetch, parse, store results,
 /// and add discovered URLs back to the frontier.
 pub async fn crawl_loop(state: Arc<Mutex<CrawlerState>>) {
-    // The fetcher lives outside the mutex — reqwest::Client is cheap to clone
-    // and we don't want to hold the lock across network I/O.
     let fetcher = Fetcher::new();
+    let mut robots_checker = RobotsChecker::new();
+    let mut last_fetch_times: HashMap<String, tokio::time::Instant> = HashMap::new();
 
     loop {
-        // Grab the next URL while holding the lock briefly.
+        // Build the set of currently blocked domains (those fetched < 1s ago)
+        let now = tokio::time::Instant::now();
+        let blocked_domains: HashSet<String> = last_fetch_times
+            .iter()
+            .filter(|(_, &t)| now.duration_since(t) < Duration::from_secs(1))
+            .map(|(d, _)| d.clone())
+            .collect();
+
         let (url, pages_crawled, max_pages) = {
             let mut s = state.lock().await;
             if !s.running {
@@ -49,15 +59,40 @@ pub async fn crawl_loop(state: Arc<Mutex<CrawlerState>>) {
                 s.running = false;
                 break;
             }
-            match s.frontier.pop() {
+            match s.frontier.pop(&blocked_domains) {
                 Some(url) => (url, s.pages_crawled, s.max_pages),
                 None => {
-                    info!("frontier empty, stopping");
-                    s.running = false;
-                    break;
+                    // Check if frontier is truly empty or just all domains blocked
+                    if s.frontier.pending() == 0 {
+                        info!("frontier empty, stopping");
+                        s.running = false;
+                        break;
+                    }
+                    // All domains are rate-limited; drop the lock and sleep
+                    // until the earliest domain becomes available
+                    drop(s);
+                    let min_wait = last_fetch_times
+                        .values()
+                        .map(|&t| Duration::from_secs(1).saturating_sub(now.duration_since(t)))
+                        .min()
+                        .unwrap_or(Duration::from_millis(100));
+                    tokio::time::sleep(min_wait).await;
+                    continue;
                 }
             }
         };
+
+        // robots.txt check
+        if !robots_checker.is_allowed(&url).await {
+            warn!("disallowed by robots.txt: {}", url);
+            let mut s = state.lock().await;
+            s.pages_crawled += 1;
+            continue;
+        }
+
+        // Record fetch time for this domain
+        let domain = url.host_str().unwrap_or("").to_string();
+        last_fetch_times.insert(domain, tokio::time::Instant::now());
 
         info!("[{}/{}] crawling: {}", pages_crawled + 1, max_pages, url);
 

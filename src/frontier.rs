@@ -20,11 +20,9 @@ impl Frontier {
     /// Add a URL to the back of the frontier if it hasn't been visited yet.
     /// Returns `true` if the URL was added, `false` if it was already seen.
     pub fn push(&mut self, url: Url) -> bool {
-        let key = url.as_str().to_string();
-        if self.visited.contains(&key) {
+        if !self.visited.insert(url.as_str().to_string()) {
             return false;
         }
-        self.visited.insert(key);
         self.queue.push_back(url);
         true
     }
@@ -42,11 +40,6 @@ impl Frontier {
     /// Number of unique URLs that have been seen (visited + pending).
     pub fn total_seen(&self) -> usize {
         self.visited.len()
-    }
-
-    /// Check whether a URL has already been visited or enqueued.
-    pub fn has_seen(&self, url: &Url) -> bool {
-        self.visited.contains(url.as_str())
     }
 }
 

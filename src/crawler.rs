@@ -5,13 +5,12 @@ use tokio::sync::Mutex;
 use tracing::{info, warn};
 
 use crate::fetcher::Fetcher;
-use crate::frontier::Frontier;
 use crate::parser;
 use crate::storage::{CrawlRecord, Storage};
 
 /// Shared crawler state, protected by a mutex for concurrent access.
 pub struct CrawlerState {
-    pub frontier: Frontier,
+    pub frontier: crate::frontier::Frontier,
     pub storage: Storage,
     pub pages_crawled: usize,
     pub max_pages: usize,
@@ -21,7 +20,7 @@ pub struct CrawlerState {
 impl CrawlerState {
     pub fn new(output_path: &Path, max_pages: usize) -> std::io::Result<Self> {
         Ok(Self {
-            frontier: Frontier::new(),
+            frontier: crate::frontier::Frontier::new(),
             storage: Storage::new(output_path)?,
             pages_crawled: 0,
             max_pages,

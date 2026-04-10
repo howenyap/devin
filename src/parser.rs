@@ -13,23 +13,20 @@ pub struct ParseResult {
 pub fn parse(html: &str, base_url: &Url) -> ParseResult {
     let document = Html::parse_document(html);
 
-    let title = Selector::parse("title")
-        .ok()
-        .and_then(|sel| document.select(&sel).next())
+    let title_sel = Selector::parse("title").expect("valid selector: title");
+    let title = document
+        .select(&title_sel)
+        .next()
         .map(|el| el.text().collect::<String>().trim().to_string());
 
-    let links = Selector::parse("a[href]")
-        .ok()
-        .map(|sel| {
-            document
-                .select(&sel)
-                .filter_map(|el| {
-                    let href = el.value().attr("href")?;
-                    resolve_url(href, base_url)
-                })
-                .collect()
+    let link_sel = Selector::parse("a[href]").expect("valid selector: a[href]");
+    let links = document
+        .select(&link_sel)
+        .filter_map(|el| {
+            let href = el.value().attr("href")?;
+            resolve_url(href, base_url)
         })
-        .unwrap_or_default();
+        .collect();
 
     ParseResult { title, links }
 }

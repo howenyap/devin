@@ -22,7 +22,7 @@ impl Storage {
     /// Create a new storage that writes to the given file path.
     /// Creates parent directories if needed.
     pub fn new(output_path: &Path) -> std::io::Result<Self> {
-        if let Some(parent) = output_path.parent() {
+        if let Some(parent) = output_path.parent().filter(|p| !p.as_os_str().is_empty()) {
             fs::create_dir_all(parent)?;
         }
         Ok(Self {

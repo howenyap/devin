@@ -136,6 +136,7 @@ async fn start_crawl(State(state): State<SharedState>) -> impl IntoResponse {
                 }),
             );
         }
+        s.pages_crawled = 0;
         s.running = true;
     }
 
